@@ -1,0 +1,9 @@
+{
+  "name": "เมืองปทุมธานี - ภาพน้ำผ่าน GitHub (ไม่ต้องเปิดคอม)",
+  "version": "2.0.0",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {"chipFamily": "ESP32", "parts": [{"path": "firmware/merged.bin", "offset": 0}]}
+  ]
+}

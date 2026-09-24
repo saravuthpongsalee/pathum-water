@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="th">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เมืองปทุมธานี | ภาพเฝ้าดูน้ำ</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#081d29;color:#edf9fc;font:17px/1.7 system-ui,sans-serif}
+  main{max-width:820px;margin:auto;padding:35px 18px 90px}h1{font-size:clamp(30px,6vw,48px);color:#76e9eb;margin:0}
+  h2{color:#91dfeb}p{color:#c7dfe8}.hint{padding:15px 19px;border-radius:12px;background:#203648}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  article{padding:15px;border:1px solid #377280;background:#112e3d;border-radius:16px}
+  img{display:none;width:100%;height:auto;aspect-ratio:320/128;object-fit:cover;border-radius:9px}
+  .age{color:#eacd86}#installer{display:none;background:#13515c;padding:18px;border-radius:15px}
+  a{color:#85eafb}code{color:#d3f9d1}
+</style>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<main>
+  <h1>เมืองปทุมธานี</h1>
+  <p>ภาพนิ่งสถานการณ์น้ำเป็นช่วงเวลา · สะพานแดง และสวนเทพปทุม</p>
+  <p class="hint"><strong>ดูเวลาของภาพก่อนใช้ข้อมูล</strong> ระบบพยายามดึงภาพราวทุก 5 นาที งานบน GitHub อาจล่าช้าหรือกล้องอาจไม่ตอบ ภาพที่เกิน 15 นาทีจะไม่แสดง</p>
+  <div class="grid">
+    <article><h2>สะพานแดง</h2><img id="image1" alt="ภาพกล้องสะพานแดง"><p class="age" id="age1">กำลังตรวจภาพ…</p></article>
+    <article><h2>สวนเทพปทุม</h2><img id="image2" alt="ภาพกล้องสวนเทพปทุม"><p class="age" id="age2">กำลังตรวจภาพ…</p></article>
+  </div>
+  <section id="installer"><h2>ติดตั้งลง ESP32-CYD ผ่าน USB</h2>
+    <p>ใช้บอร์ด 2.8 นิ้วรุ่น ST7789 + XPT2046; ติดตั้งเฉพาะไฟล์ที่ผู้จัดทำทดสอบกับบอร์ดจริงแล้ว</p>
+    <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
+  </section>
+  <p id="pending">เฟิร์มแวร์ยังอยู่ระหว่างทดสอบบนบอร์ดจริง จึงยังไม่เปิดปุ่มติดตั้ง</p>
+  <h2>ตั้งค่า Wi-Fi ในจอ</h2>
+  <p>หลังติดตั้ง เชื่อมต่อ Wi-Fi ชื่อ <code>PATHUM-XXXXXXXX</code> ตามรหัสบนจอ เปิด <code>192.168.4.1</code> แล้วกรอก Wi-Fi บ้านกับ URL ของหน้านี้ จอจะจำค่าไว้</p>
+  <p>ภาพใช้ประกอบการเฝ้าดูเท่านั้น ให้ติดตามประกาศหน่วยงานในพื้นที่ควบคู่กัน</p>
+</main>
+<script>
+async function refresh(camera){
+  const img=document.getElementById('image'+camera), label=document.getElementById('age'+camera);
+  try{
+    const response=await fetch('./cam/'+camera+'.meta?r='+Date.now(),{cache:'no-store'});
+    if(!response.ok)throw Error('ไม่มีข้อมูลเวลา');
+    const stamp=Number((await response.text()).trim());
+    const age=Math.floor(Date.now()/1000-stamp);
+    if(!Number.isFinite(stamp)||stamp<1700000000||age< -90||age>900)throw Error('ไม่มีภาพใหม่ใน 15 นาที');
+    label.textContent='ภาพเวลา '+new Date(stamp*1000).toLocaleString('th-TH')+' · '+Math.max(0,Math.floor(age/60))+' นาทีที่แล้ว';
+    img.onerror=()=>{img.style.display='none';label.textContent='โหลดภาพไม่สำเร็จ'};
+    img.src='./cam/'+camera+'-z1.jpg?v='+stamp;
+    img.style.display='block';
+  }catch(error){img.style.display='none';label.textContent=error.message}
+}
+refresh(1);refresh(2);setInterval(()=>{refresh(1);refresh(2)},60000);
+fetch('./firmware/merged.bin',{method:'HEAD',cache:'no-store'}).then(r=>{
+  if(r.ok&&Number(r.headers.get('content-length'))>65536){
+    document.getElementById('installer').style.display='block';
+    document.getElementById('pending').style.display='none';
+  }
+}).catch(()=>{});
+</script>
+</html>
