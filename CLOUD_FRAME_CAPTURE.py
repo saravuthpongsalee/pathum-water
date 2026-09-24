@@ -9,6 +9,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 SOURCES = (
     "https://s90.ipcamlive.com/streams/5asxkbexh0py8flva/stream.m3u8",
@@ -26,8 +28,25 @@ def ffmpeg_binary():
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
+def inspect_playlist(camera):
+    """Log a small public playlist sample after FFmpeg fails (no secrets)."""
+    request = Request(SOURCES[camera], headers={
+        "User-Agent": "Mozilla/5.0", "Referer": REFERERS[camera],
+    })
+    try:
+        with urlopen(request, timeout=8) as response:
+            sample = response.read(160)
+            print(f"camera {camera+1}: playlist HTTP={response.status} "
+                  f"type={response.headers.get('Content-Type', '?')} "
+                  f"bytes_read={len(sample)} starts_m3u={sample.startswith(b'#EXTM3U')}",
+                  flush=True)
+    except (HTTPError, URLError, TimeoutError, OSError) as error:
+        print(f"camera {camera+1}: playlist GET failed: "
+              f"{type(error).__name__}: {error}", flush=True)
+
+
 def one_frame(exe, camera, synthetic=False):
-    cmd = [exe, "-hide_banner", "-nostdin", "-loglevel", "error"]
+    cmd = [exe, "-hide_banner", "-nostdin", "-loglevel", "warning"]
     if synthetic:
         cmd += ["-f", "lavfi", "-i", f"testsrc2=size=640x360:rate=1:duration=1"]
     else:
@@ -38,11 +57,19 @@ def one_frame(exe, camera, synthetic=False):
     try:
         result = subprocess.run(cmd, capture_output=True, timeout=35)
     except (subprocess.TimeoutExpired, OSError) as error:
-        print(f"camera {camera+1}: cannot capture: {error}", flush=True)
+        print(f"camera {camera+1}: cannot capture: "
+              f"{type(error).__name__}: {error}", flush=True)
+        if not synthetic:
+            inspect_playlist(camera)
         return None
     if result.returncode or not result.stdout.startswith(b"\xff\xd8"):
-        print(f"camera {camera+1}: capture failed: " +
-              result.stderr.decode("utf-8", "replace")[-800:], flush=True)
+        details = result.stderr.decode("utf-8", "replace").strip()[-2000:]
+        print(f"camera {camera+1}: capture failed rc={result.returncode} "
+              f"stdout_bytes={len(result.stdout)} "
+              f"header={result.stdout[:12].hex()} "
+              f"ffmpeg={exe} stderr={details or '(empty)'}", flush=True)
+        if not synthetic:
+            inspect_playlist(camera)
         return None
     return result.stdout
 
