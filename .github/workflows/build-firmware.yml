@@ -1,0 +1,85 @@
+name: Build ESP32-CYD firmware for web install
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to the public installer after testing on your ST7789 CYD'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.x'
+
+      - name: Install ESP32 core and LovyanGFX
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.11 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib update-index
+          arduino-cli lib install LovyanGFX@1.2.25
+
+      - name: Compile classic ESP32 4MB firmware
+        run: |
+          sketch="$RUNNER_TEMP/MUANG_PATHUMTHANI_CLOUD_NO_PC_V2"
+          mkdir -p "$sketch" "$RUNNER_TEMP/firmware-out"
+          cp MUANG_PATHUMTHANI_CLOUD_NO_PC_V2.ino cyd_display.h sarabun14_fixed.h "$sketch/"
+          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir "$RUNNER_TEMP/firmware-out" "$sketch"
+
+      - name: Verify merged image and prepare test download
+        run: |
+          image="$(find "$RUNNER_TEMP/firmware-out" -maxdepth 2 -name '*.merged.bin' -type f -print -quit)"
+          if [ -z "$image" ]; then
+            find "$RUNNER_TEMP/firmware-out" -maxdepth 2 -type f -print
+            echo 'Arduino did not export a merged.bin image.' >&2
+            exit 1
+          fi
+          python3 - "$image" <<'PY'
+          from pathlib import Path
+          import sys
+          data = Path(sys.argv[1]).read_bytes()
+          if not (0x10100 <= len(data) <= 0x400000):
+              raise SystemExit(f'Unexpected image size: {len(data)}')
+          if data[0x1000] != 0xE9 or data[0x10000] != 0xE9:
+              raise SystemExit('Wrong bootloader/application offsets for classic ESP32')
+          if data[0x8000:0x8002] != b'\xaa\x50':
+              raise SystemExit('Missing ESP32 partition table at 0x8000')
+          print(f'Classic ESP32 merged image: {len(data)} bytes; flash at 0x0')
+          PY
+          mkdir -p docs/firmware
+          cp "$image" docs/firmware/merged.bin
+
+      - name: Downloadable firmware for owner board test
+        uses: actions/upload-artifact@v4
+        with:
+          name: pathum-cyd-st7789-test
+          path: docs/firmware/merged.bin
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish tested firmware to the website
+        if: ${{ inputs.publish == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/firmware/merged.bin
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish tested ESP32-CYD firmware for web install'
+            git push
+          fi
+          gh workflow run water-camera-pages.yml --ref "$GITHUB_REF_NAME"
