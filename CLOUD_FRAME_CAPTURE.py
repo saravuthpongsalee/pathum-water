@@ -13,7 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 SOURCES = (
-    "https://s90.ipcamlive.com/streams/5asxkbexh0py8flva/stream.m3u8",
+    "https://s116.ipcamlive.com/streams/74h48f1gjtxdtv6ks/stream.m3u8",
     "http://101.109.253.60:8999/playlist.m3u8",
 )
 REFERERS = ("https://www.ipcamlive.com/68c13eaeec104", "http://101.109.253.60:8999/")
